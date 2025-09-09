@@ -30,8 +30,7 @@ bot = commands.Bot(command_prefix="*", intents=intents)
 
 # Timezone for scheduling
 tz = zoneinfo.ZoneInfo(TIMEZONE)
-last_posted_week = None
-ping_day_of_week = random.randint(0, 4)  # 0 = Monday, 4 = Friday
+last_posted_date = None  # Track last posting date
 
 # Format lunch menu nicely
 def format_lunch_menu(menu: dict) -> str:
@@ -43,42 +42,44 @@ def format_lunch_menu(menu: dict) -> str:
         message += "\n"
     return message
 
-# Automatic weekly lunch posting
+# Automatic daily lunch posting
 @tasks.loop(minutes=15)
 async def lunch_task():
-    global last_posted_week, ping_day_of_week
+    global last_posted_date
     now = datetime.now(tz)
 
     # Skip weekends
-    if now.weekday() >= 5:
+    if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
         return
 
-    # Only post once per week on the random weekday
-    if now.isocalendar().week != last_posted_week and now.weekday() == ping_day_of_week:
-        channel = bot.get_channel(CHANNEL_ID)
-        if channel is None:
-            print(f"Channel {CHANNEL_ID} not found")
-            return
+    # Only post once per day
+    if last_posted_date == now.date():
+        return
 
-        try:
-            menu = await fetch_lunch_menu()
-        except Exception as e:
-            print(f"Failed to fetch menu: {e}")
-            return
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel is None:
+        print(f"Channel {CHANNEL_ID} not found")
+        return
 
-        message_text = f"@everyone\n{format_lunch_menu(menu)}"
-        try:
-            message = await channel.send(message_text)
-            # Add reactions for voting
-            for restaurant, emoji in RESTAURANT_EMOJIS.items():
-                await message.add_reaction(emoji)
-        except discord.Forbidden:
-            print("Bot lacks permission to send messages or add reactions.")
-        except Exception as e:
-            print(f"Error sending message: {e}")
+    try:
+        menu = await fetch_lunch_menu()
+    except Exception as e:
+        print(f"Failed to fetch menu: {e}")
+        return
 
-        last_posted_week = now.isocalendar().week
-        ping_day_of_week = random.randint(0, 4)  # pick new day for next week
+    message_text = f"@everyone\n{format_lunch_menu(menu)}"
+    try:
+        message = await channel.send(message_text)
+        # Add reactions for voting
+        for restaurant, emoji in RESTAURANT_EMOJIS.items():
+            await message.add_reaction(emoji)
+    except discord.Forbidden:
+        print("Bot lacks permission to send messages or add reactions.")
+    except Exception as e:
+        print(f"Error sending message: {e}")
+
+    # Mark that we've posted today
+    last_posted_date = now.date()
 
 # Manual command to post lunch menu
 @bot.command(name="lunch")
