@@ -1,7 +1,7 @@
 import os
 import random
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 import zoneinfo
 import discord
 from discord.ext import tasks, commands
@@ -42,8 +42,9 @@ def format_lunch_menu(menu: dict) -> str:
         message += "\n"
     return message
 
-# Automatic daily lunch posting
-@tasks.loop(minutes=15)
+# Automatic daily lunch posting at 05:00 local time
+# NOTE: datetime.time here is timezone-aware via tzinfo=tz
+@tasks.loop(time=time(hour=5, minute=0, tzinfo=tz))
 async def lunch_task():
     global last_posted_date
     now = datetime.now(tz)
@@ -58,8 +59,12 @@ async def lunch_task():
 
     channel = bot.get_channel(CHANNEL_ID)
     if channel is None:
-        print(f"Channel {CHANNEL_ID} not found")
-        return
+        print(f"Channel {CHANNEL_ID} not found (not cached yet); trying fetch...")
+        try:
+            channel = await bot.fetch_channel(CHANNEL_ID)
+        except Exception as e:
+            print(f"Failed to fetch channel {CHANNEL_ID}: {e}")
+            return
 
     try:
         menu = await fetch_lunch_menu()
@@ -67,9 +72,9 @@ async def lunch_task():
         print(f"Failed to fetch menu: {e}")
         return
 
-    message_text = f"@everyone\n{format_lunch_menu(menu)}"
+    formatted = format_lunch_menu(menu)
     try:
-        message = await channel.send(message_text)
+        message = await channel.send(formatted)
         # Add reactions for voting
         for restaurant, emoji in RESTAURANT_EMOJIS.items():
             await message.add_reaction(emoji)
@@ -109,6 +114,9 @@ async def lunch_command(ctx):
 @bot.event
 async def on_ready():
     print(f"Bot logged in as {bot.user}")
-    lunch_task.start()
+    # Wait to ensure cache is warm before first run
+    await bot.wait_until_ready()
+    if not lunch_task.is_running():
+        lunch_task.start()
 
 bot.run(TOKEN)
