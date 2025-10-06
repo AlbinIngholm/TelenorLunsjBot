@@ -44,7 +44,7 @@ def format_lunch_menu(menu: dict) -> str:
 
 # Automatic daily lunch posting at 05:00 local time
 # NOTE: datetime.time here is timezone-aware via tzinfo=tz
-@tasks.loop(time=time(hour=5, minute=0, tzinfo=tz))
+@tasks.loop(time=time(hour=7, minute=53, tzinfo=tz))
 async def lunch_task():
     global last_posted_date
     now = datetime.now(tz)
